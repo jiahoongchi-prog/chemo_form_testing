@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemo Regimen Order Form</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .view-transition {
+            transition: opacity 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8 lg:p-12">
+
+    <div class="max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-6 md:p-8 lg:p-10">
+        <h1 class="text-3xl font-bold text-center text-gray-800 mb-6">Chemotherapy Regimen Order Form</h1>
+        <p class="text-center text-gray-500 mb-8">
+            Manage today's orders or view the archive.
+        </p>
+
+        <!-- Tabs for Today and Archive views -->
+        <div class="flex justify-center mb-6 space-x-4">
+            <button id="todayTab" class="py-2 px-6 rounded-lg font-medium transition-colors duration-200 bg-blue-600 text-white shadow-md">Today's Orders</button>
+            <button id="archiveTab" class="py-2 px-6 rounded-lg font-medium transition-colors duration-200 bg-gray-200 text-gray-700 hover:bg-gray-300">Order Archive</button>
+        </div>
+
+        <!-- Today's Orders View -->
+        <div id="todayView" class="view">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Today: <span id="currentDate"></span></h2>
+            <div class="overflow-x-auto relative shadow-md sm:rounded-lg">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" class="py-3 px-2 md:px-4">Date</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Patient Name / ID</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Drug Name</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Dose</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Route</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Instruction</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Ward</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Pharmacy Status</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="todayTableBody">
+                        <!-- Table rows for today's orders will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="flex justify-center mt-8">
+                <button id="addOrderBtn" class="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                    Add New Order
+                </button>
+            </div>
+        </div>
+
+        <!-- Order Archive View -->
+        <div id="archiveView" class="view hidden">
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">Archived Orders</h2>
+            <div class="overflow-x-auto relative shadow-md sm:rounded-lg">
+                <table class="w-full text-sm text-left text-gray-500">
+                    <thead class="text-xs text-gray-700 uppercase bg-gray-50">
+                        <tr>
+                            <th scope="col" class="py-3 px-2 md:px-4">Date</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Patient Name / ID</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Drug Name</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Dose</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Route</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Instruction</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Ward</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Pharmacy Status</th>
+                            <th scope="col" class="py-3 px-2 md:px-4">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="archiveTableBody">
+                        <!-- Table rows for archived orders will be inserted here by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, addDoc, setDoc, deleteDoc, onSnapshot, collection, query, where, Timestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        
+        // Set log level for debugging
+        setLogLevel('debug');
+
+        // Firestore configuration and app ID (provided by the environment)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = JSON.parse(typeof __firebase_config !== 'undefined' ? __firebase_config : '{}');
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        // Initialize Firebase
+        let app, db, auth;
+        try {
+            app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+        } catch (error) {
+            console.error("Firebase initialization failed:", error);
+            // Handle initialization failure gracefully, maybe display a message to the user.
+        }
+
+        // Global state for orders
+        let todayOrders = [];
+        let archiveOrders = [];
+        let userId = '';
+
+        const todayTableBody = document.getElementById('todayTableBody');
+        const archiveTableBody = document.getElementById('archiveTableBody');
+        const todayView = document.getElementById('todayView');
+        const archiveView = document.getElementById('archiveView');
+        const todayTab = document.getElementById('todayTab');
+        const archiveTab = document.getElementById('archiveTab');
+        const addOrderBtn = document.getElementById('addOrderBtn');
+        const currentDateEl = document.getElementById('currentDate');
+        
+        const instructionOptions = ['Normal', 'Urgent'];
+        const wardOptions = ['4A', '4B', 'PHOD', '7A'];
+        const pharmacyStatuses = ['Ordered', 'In Preparation', 'Prepared', 'Dispensed'];
+        const routeOptions = ['IV', 'Intrathecal', 'SC', 'Intramuscular'];
+        const drugOptions = [
+            'ACTINOMYCIN', 'L-ASPARAGINASE', 'BEVACIZUMAB', 'BLEOMYCIN', 'CARBOPLATIN', 'CICLOSPORIN', 'CISPLATIN',
+            'CLADRIBINE', 'CYCLOPHOSPHAMIDE', 'CYTARABINE', 'CYTA-HYDROCORT', 'DACARBAZINE', 'DAUNORUBICIN',
+            'DOCETAXEL', 'DOXORUBICIN', 'EPIRUBICIN', 'ETOPOSIDE', 'FLUDARABINE', 'FLUOROURACIL', 'GANCICLOVIR',
+            'GEMCITABINE', 'IDARUBICIN', 'IFOSFAMIDE', 'IRINOTECAN', 'METHOTREXATE', 'MITOMYCIN-C', 'MITOXANTRONE',
+            'OXALIPLATIN', 'PACLITAXEL', 'PEG. ASPARAGINASE', 'TOPOTECAN', 'VINBLASTINE', 'VINCRISTINE', 'VINDESINE'
+        ].sort();
+
+        const today = new Date();
+        const todayDateString = today.toISOString().slice(0, 10);
+        currentDateEl.textContent = todayDateString;
+
+        // Handles user authentication and data loading
+        onAuthStateChanged(auth, async (user) => {
+            if (user) {
+                userId = user.uid;
+                console.log("Authenticated with user ID:", userId);
+                await initializeFirestoreListeners();
+            } else {
+                console.log("No user signed in. Signing in anonymously...");
+                try {
+                    if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch (error) {
+                    console.error("Authentication failed:", error);
+                }
+            }
+        });
+        
+        async function initializeFirestoreListeners() {
+            // Get today's orders and set up a real-time listener
+            const todayOrdersRef = collection(db, `/artifacts/${appId}/public/data/orders`);
+            const todayQuery = query(todayOrdersRef, where("date", "==", todayDateString));
+            onSnapshot(todayQuery, (querySnapshot) => {
+                const fetchedOrders = [];
+                querySnapshot.forEach((doc) => {
+                    const orderData = doc.data();
+                    fetchedOrders.push({
+                        ...orderData,
+                        id: doc.id
+                    });
+                });
+                todayOrders = fetchedOrders;
+                renderTable(todayTableBody, todayOrders, true);
+            });
+
+            // Get archived orders and set up a real-time listener
+            const archiveOrdersRef = collection(db, `/artifacts/${appId}/public/data/orders`);
+            const archiveQuery = query(archiveOrdersRef, where("date", "!=", todayDateString));
+            onSnapshot(archiveQuery, (querySnapshot) => {
+                const fetchedOrders = [];
+                querySnapshot.forEach((doc) => {
+                    const orderData = doc.data();
+                    fetchedOrders.push({
+                        ...orderData,
+                        id: doc.id
+                    });
+                });
+                archiveOrders = fetchedOrders;
+                renderTable(archiveTableBody, archiveOrders, false);
+            });
+        }
+
+        function renderTable(tableBody, data, isTodayTable = false) {
+            tableBody.innerHTML = '';
+            if (data.length === 0) {
+                tableBody.innerHTML = '<tr><td colspan="9" class="text-center py-4 text-gray-400">No orders to display.</td></tr>';
+                return;
+            }
+
+            data.forEach((order, index) => {
+                const row = document.createElement('tr');
+                let rowClass = 'bg-white border-b hover:bg-gray-50';
+                let cellClass = 'py-4 px-2 md:px-4';
+
+                if (order.status === 'Dispensed') {
+                    rowClass = 'bg-gray-100 border-b text-gray-400 italic';
+                } else if (order.status === 'Prepared') {
+                    rowClass = 'bg-green-50 border-b hover:bg-green-100';
+                } else if (order.status === 'In Preparation') {
+                    rowClass = 'bg-yellow-50 border-b hover:bg-yellow-100';
+                } else {
+                    if (order.date < todayDateString) {
+                        rowClass = 'bg-red-100 border-b hover:bg-red-200 font-bold';
+                    }
+                }
+                row.className = rowClass;
+
+                row.innerHTML = `
+                    <td class="${cellClass}"><input data-key="date" type="date" value="${order.date}" class="w-full bg-transparent border-none focus:outline-none" /></td>
+                    <td class="${cellClass}"><input data-key="patient" type="text" value="${order.patient}" class="w-full bg-transparent border-none focus:outline-none" /></td>
+                    <td class="${cellClass}">
+                        <select data-key="drug" class="w-full bg-transparent border-none focus:outline-none rounded-md cursor-pointer">
+                            <option value="" disabled selected>Select a drug</option>
+                            ${drugOptions.map(option => `<option value="${option}" ${order.drug === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="${cellClass}"><input data-key="dose" type="text" value="${order.dose}" class="w-full bg-transparent border-none focus:outline-none" /></td>
+                    <td class="${cellClass}">
+                        <select data-key="route" class="w-full bg-transparent border-none focus:outline-none rounded-md cursor-pointer">
+                            <option value="" disabled>Select a route</option>
+                            ${routeOptions.map(option => `<option value="${option}" ${order.route === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="${cellClass}">
+                        <select data-key="instruction" class="w-full bg-transparent border-none focus:outline-none rounded-md cursor-pointer">
+                            ${instructionOptions.map(option => `<option value="${option}" ${order.instruction === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="${cellClass}">
+                        <select data-key="ward" class="w-full bg-transparent border-none focus:outline-none rounded-md cursor-pointer">
+                            ${wardOptions.map(option => `<option value="${option}" ${order.ward === option ? 'selected' : ''}>${option}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="${cellClass}">
+                        <select data-key="status" class="w-full bg-transparent border-none focus:outline-none rounded-md cursor-pointer">
+                            ${pharmacyStatuses.map(status => `<option value="${status}" ${order.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+                        </select>
+                    </td>
+                    <td class="${cellClass}">
+                        <button data-action="delete" class="bg-red-500 hover:bg-red-600 text-white p-2 rounded-md transition-colors duration-200">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                              <path fill-rule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm4 0a1 1 0 112 0v6a1 1 0 11-2 0V8z" clip-rule="evenodd" />
+                            </svg>
+                        </button>
+                    </td>
+                `;
+                row.dataset.docId = order.id;
+                row.dataset.isToday = isTodayTable;
+                tableBody.appendChild(row);
+            });
+        }
+
+        function setupEventListeners() {
+            todayTableBody.addEventListener('input', (event) => {
+                const row = event.target.closest('tr');
+                const docId = row.dataset.docId;
+                const key = event.target.dataset.key;
+                const value = event.target.value;
+                updateOrder(docId, { [key]: value });
+            });
+
+            todayTableBody.addEventListener('change', (event) => {
+                const row = event.target.closest('tr');
+                const docId = row.dataset.docId;
+                const key = event.target.dataset.key;
+                const value = event.target.value;
+                updateOrder(docId, { [key]: value });
+            });
+
+            todayTableBody.addEventListener('click', (event) => {
+                if (event.target.closest('button')?.dataset.action === 'delete') {
+                    const row = event.target.closest('tr');
+                    const docId = row.dataset.docId;
+                    deleteOrder(docId);
+                }
+            });
+            
+            archiveTableBody.addEventListener('click', (event) => {
+                if (event.target.closest('button')?.dataset.action === 'delete') {
+                    const row = event.target.closest('tr');
+                    const docId = row.dataset.docId;
+                    deleteOrder(docId);
+                }
+            });
+        }
+        
+        async function updateOrder(docId, data) {
+            if (!docId) { console.error("No document ID provided for update."); return; }
+            try {
+                await setDoc(doc(db, `/artifacts/${appId}/public/data/orders`, docId), data, { merge: true });
+            } catch (error) {
+                console.error("Error updating document: ", error);
+            }
+        }
+        
+        async function deleteOrder(docId) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/orders`, docId));
+            } catch (error) {
+                console.error("Error deleting document: ", error);
+            }
+        }
+
+        addOrderBtn.addEventListener('click', async () => {
+            const newOrder = {
+                date: todayDateString,
+                patient: '',
+                drug: '',
+                dose: '',
+                route: '',
+                instruction: 'Normal',
+                ward: '4A',
+                status: 'Ordered',
+                author: userId,
+                timestamp: Timestamp.now()
+            };
+            try {
+                await addDoc(collection(db, `/artifacts/${appId}/public/data/orders`), newOrder);
+            } catch (e) {
+                console.error("Error adding document: ", e);
+            }
+        });
+
+        function showView(viewId) {
+            todayView.classList.add('hidden');
+            archiveView.classList.add('hidden');
+            todayTab.classList.remove('bg-blue-600', 'text-white');
+            todayTab.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            archiveTab.classList.remove('bg-blue-600', 'text-white');
+            archiveTab.classList.add('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+
+            if (viewId === 'today') {
+                todayView.classList.remove('hidden');
+                todayTab.classList.add('bg-blue-600', 'text-white');
+                todayTab.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            } else {
+                archiveView.classList.remove('hidden');
+                archiveTab.classList.add('bg-blue-600', 'text-white');
+                archiveTab.classList.remove('bg-gray-200', 'text-gray-700', 'hover:bg-gray-300');
+            }
+        }
+
+        todayTab.addEventListener('click', () => showView('today'));
+        archiveTab.addEventListener('click', () => showView('archive'));
+
+        // Initialize view and event listeners
+        showView('today');
+        setupEventListeners();
+    </script>
+</body>
+</html>
